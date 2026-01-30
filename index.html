@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NAS 极速数据查询系统</title>
+    <!-- 引入 Tailwind CSS 样式库 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入图标库 -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* 自定义动画效果 */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.3s ease-out forwards; }
+        
+        /* 复制成功的提示动画 */
+        .copy-tip { transition: all 0.2s; opacity: 0; transform: translateY(5px); }
+        .group:hover .copy-tip { opacity: 1; transform: translateY(0); }
+        
+        /* 表格斑马纹 */
+        .zebra-row:nth-child(even) { background-color: #f9fafb; }
+        .zebra-row:hover { background-color: #eff6ff; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800 min-h-screen flex flex-col items-center pt-10 px-4">
+
+    <!-- 1. 顶部状态栏 -->
+    <div class="w-full max-w-2xl flex justify-between items-center mb-6">
+        <div class="flex items-center gap-2">
+            <i class="fa-solid fa-database text-blue-600 text-xl"></i>
+            <h1 class="text-xl font-bold tracking-wide text-gray-700">NAS 数据查询终端</h1>
+        </div>
+        <!-- 服务器状态指示灯 -->
+        <div id="serverStatus" class="flex items-center gap-2 text-sm bg-white px-3 py-1 rounded-full shadow-sm border border-gray-200">
+            <span class="relative flex h-3 w-3">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-gray-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-3 w-3 bg-gray-500"></span>
+            </span>
+            <span class="text-gray-500 font-medium">连接中...</span>
+        </div>
+    </div>
+
+    <!-- 2. 主搜索卡片 -->
+    <div class="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+        <div class="p-8">
+            <label class="block text-sm font-semibold text-gray-600 mb-2 ml-1">
+                请输入查询条件
+            </label>
+            <div class="relative group">
+                <!-- 输入框前置图标 -->
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <i class="fa-solid fa-magnifying-glass text-gray-400 group-focus-within:text-blue-500 transition-colors"></i>
+                </div>
+                
+                <!-- 核心输入框 -->
+                <input type="text" id="searchInput" 
+                    class="block w-full pl-11 pr-24 py-4 bg-gray-50 border border-gray-200 rounded-xl text-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all placeholder-gray-400"
+                    placeholder="输入 UID 或 手机号码 (最少3位)"
+                    autofocus>
+                
+                <!-- 搜索按钮 (绝对定位在右侧) -->
+                <button onclick="performSearch()" id="searchBtn"
+                    class="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg px-6 transition-colors flex items-center gap-2">
+                    <span>查询</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+            
+            <!-- 提示信息 -->
+            <div class="flex justify-between mt-3 text-xs text-gray-400 px-1">
+                <span><i class="fa-regular fa-keyboard mr-1"></i>按 Enter 快速搜索</span>
+                <span id="indexCountInfo">索引加载中...</span>
+            </div>
+        </div>
+
+        <!-- 3. 结果展示区 -->
+        <div id="resultContainer" class="hidden border-t border-gray-100">
+            <!-- 统计栏 -->
+            <div class="bg-blue-50 px-6 py-3 flex justify-between items-center border-b border-blue-100">
+                <span class="text-blue-800 text-sm font-medium"><i class="fa-solid fa-list-check mr-2"></i>查询结果</span>
+                <span id="searchTimer" class="text-xs text-blue-600 font-mono bg-white px-2 py-1 rounded border border-blue-200">
+                    耗时: 0.00s
+                </span>
+            </div>
+
+            <!-- 表格 -->
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50 text-gray-500 text-xs uppercase tracking-wider">
+                        <tr>
+                            <th class="px-6 py-3 font-medium">UID</th>
+                            <th class="px-6 py-3 font-medium">手机号码</th>
+                            <th class="px-6 py-3 text-right font-medium">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="resultBody" class="divide-y divide-gray-100 text-sm text-gray-700">
+                        <!-- JS 动态填充内容 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- 空状态 / 错误提示 -->
+        <div id="emptyState" class="hidden p-10 text-center">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 mb-4 text-gray-400">
+                <i class="fa-solid fa-inbox text-2xl"></i>
+            </div>
+            <h3 class="text-lg font-medium text-gray-900">未找到相关数据</h3>
+            <p class="text-gray-500 text-sm mt-1">请尝试检查输入的号码是否正确，或尝试输入更短的前缀。</p>
+        </div>
+        
+        <!-- 加载中状态 -->
+        <div id="loadingState" class="hidden p-12 text-center">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-100 border-t-blue-600 mb-3"></div>
+            <p class="text-gray-500 text-sm">正在检索海量数据...</p>
+        </div>
+    </div>
+
+    <div class="mt-8 text-gray-400 text-xs">
+        &copy; NAS Data Search System | Secure & Local
+    </div>
+
+    <!-- JavaScript 交互逻辑 -->
+    <script>
+        // === 1. 初始化与状态检测 ===
+        const els = {
+            input: document.getElementById('searchInput'),
+            btn: document.getElementById('searchBtn'),
+            status: document.getElementById('serverStatus'),
+            resultBox: document.getElementById('resultContainer'),
+            tbody: document.getElementById('resultBody'),
+            empty: document.getElementById('emptyState'),
+            loading: document.getElementById('loadingState'),
+            timer: document.getElementById('searchTimer'),
+            countInfo: document.getElementById('indexCountInfo')
+        };
+
+        // 页面加载完成后立即检查服务器状态
+        window.addEventListener('load', checkServerStatus);
+
+        async function checkServerStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                
+                if (data.status === 'ok') {
+                    // 绿灯：状态正常
+                    els.status.innerHTML = `
+                        <span class="relative flex h-3 w-3">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                        </span>
+                        <span class="text-green-700 font-medium">服务在线</span>
+                    `;
+                    els.status.className = "flex items-center gap-2 text-sm bg-green-50 px-3 py-1 rounded-full shadow-sm border border-green-200";
+                    els.countInfo.innerText = `当前索引分片数: ${data.count}`;
+                } else {
+                    throw new Error(data.msg);
+                }
+            } catch (e) {
+                // 红灯：状态异常
+                els.status.innerHTML = `
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                    <span class="text-red-700 font-medium">离线/未挂载</span>
+                `;
+                els.status.className = "flex items-center gap-2 text-sm bg-red-50 px-3 py-1 rounded-full shadow-sm border border-red-200";
+                els.countInfo.innerText = "⚠️ 请检查 Docker 挂载设置";
+            }
+        }
+
+        // === 2. 核心搜索逻辑 ===
+        async function performSearch() {
+            const query = els.input.value.trim();
+            
+            // 校验：如果为空
+            if (!query) {
+                showToast("请输入内容后再搜索", "warning");
+                els.input.focus();
+                return;
+            }
+            // 校验：如果太短
+            if (query.length < 3) {
+                showToast("为了准确性，请输入至少 3 位数字", "warning");
+                return;
+            }
+
+            // UI 切换到加载状态
+            setLoading(true);
+            const startTime = performance.now();
+
+            try {
+                const res = await fetch(`/api/search?q=${query}`);
+                const data = await res.json();
+                const duration = ((performance.now() - startTime) / 1000).toFixed(3);
+
+                setLoading(false);
+
+                if (data.length > 0) {
+                    renderTable(data);
+                    els.timer.innerText = `耗时: ${duration}s`;
+                    els.resultBox.classList.remove('hidden');
+                    els.resultBox.classList.add('fade-in'); // 添加淡入动画
+                } else {
+                    els.empty.classList.remove('hidden');
+                    els.empty.classList.add('fade-in');
+                }
+
+            } catch (e) {
+                setLoading(false);
+                showToast("连接服务器失败，请检查网络", "error");
+            }
+        }
+
+        // === 3. 渲染与交互工具 ===
+        
+        // 渲染表格
+        function renderTable(data) {
+            els.tbody.innerHTML = data.map(item => `
+                <tr class="zebra-row group transition-colors">
+                    <td class="px-6 py-4 font-mono text-gray-900 font-bold select-all">${highlightMatch(item.uid)}</td>
+                    <td class="px-6 py-4 font-mono text-gray-600 select-all">${highlightMatch(item.phone)}</td>
+                    <td class="px-6 py-4 text-right">
+                        <button onclick="copyToClipboard('${item.uid}, ${item.phone}', this)" 
+                            class="text-xs bg-white border border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-gray-500 px-3 py-1.5 rounded transition-all shadow-sm active:scale-95">
+                            <i class="fa-regular fa-copy mr-1"></i>复制
+                        </button>
+                        <span class="text-green-600 text-xs font-bold ml-2 copy-tip">已复制!</span>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        // 高亮匹配的文字
+        function highlightMatch(text) {
+            const query = els.input.value.trim();
+            if (!query) return text;
+            // 简单的文本替换高亮
+            return text.replace(query, `<span class="bg-yellow-200 text-yellow-800 px-0.5 rounded">${query}</span>`);
+        }
+
+        // UI 状态切换助手
+        function setLoading(isLoading) {
+            if (isLoading) {
+                els.btn.disabled = true;
+                els.btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> 搜索中...`;
+                els.btn.classList.add('opacity-75', 'cursor-not-allowed');
+                els.resultBox.classList.add('hidden');
+                els.empty.classList.add('hidden');
+                els.loading.classList.remove('hidden');
+            } else {
+                els.btn.disabled = false;
+                els.btn.innerHTML = `<span>查询</span><i class="fa-solid fa-arrow-right"></i>`;
+                els.btn.classList.remove('opacity-75', 'cursor-not-allowed');
+                els.loading.classList.add('hidden');
+            }
+        }
+
+        // 复制功能
+        function copyToClipboard(text, btnElement) {
+            navigator.clipboard.writeText(text).then(() => {
+                // 这里利用 CSS 的 group-hover 技巧显示提示，或者我们手动触发一个动画
+                // 这里为了简单，我们让按钮文字变一下
+                const originalHtml = btnElement.innerHTML;
+                btnElement.innerHTML = `<i class="fa-solid fa-check"></i> 成功`;
+                btnElement.classList.add('text-green-600', 'border-green-200', 'bg-green-50');
+                
+                setTimeout(() => {
+                    btnElement.innerHTML = originalHtml;
+                    btnElement.classList.remove('text-green-600', 'border-green-200', 'bg-green-50');
+                }, 2000);
+            });
+        }
+
+        // 简单的顶部提示条 (Toast)
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const colors = type === 'error' ? 'bg-red-500' : 'bg-yellow-500';
+            toast.className = `fixed top-5 left-1/2 transform -translate-x-1/2 ${colors} text-white px-6 py-3 rounded-lg shadow-lg z-50 fade-in flex items-center gap-2`;
+            toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${message}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // === 4. 事件监听 ===
+        
+        // 监听回车键
+        els.input.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+
+        // 监听 ESC 键清空
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                els.input.value = '';
+                els.input.focus();
+                els.resultBox.classList.add('hidden');
+                els.empty.classList.add('hidden');
+            }
+        });
+    </script>
+</body>
+</html>
