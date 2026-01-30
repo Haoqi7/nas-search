@@ -118,5 +118,3 @@ services:
     git tag v2601
     git push origin v2601
     ```
-```
-
