@@ -25,7 +25,7 @@
 nas-search/
 ├── .github/workflows/
 │   └── build-release.yml   # GitHub Action 自动化构建脚本
-├── data_gzip/              # [重要] 本地生成的索引数据 (勿上传到 GitHub)
+├── data_gzip/              # [重要] 本地生成的索引数据
 ├── Dockerfile              # 镜像构建配置
 ├── server.py               # 零依赖后端服务
 ├── index.html              # 交互式前端
