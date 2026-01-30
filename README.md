@@ -70,7 +70,7 @@ python server.py
    * 端口映射：8090:8000
 
 ### **方法 B：手动构建 (开发者)**
-、、、
+\`\`\`
 \# 构建镜像  
 docker build \-t nas-search:local .
 
@@ -80,9 +80,9 @@ docker run \-d \\
   \-v /你的本地数据路径/data\_gzip:/data \\  
   \--name nas-search \\  
   nas-search:local
-  、、、
+\`\`\`
 ### **方法 c：docker compose**
-、、、
+\`\`\`
 version: '3'
 services:
   nas-search-service:
@@ -99,7 +99,7 @@ services:
       sh -c "ls -la && python server.py"
     ports:
       - "8010:8000"
-、、、
+\`\`\`
 ## **🔄 版本发布流程 (CI/CD)**
 
 本项目配置了 GitHub Actions。发布新版本只需打上 v 开头的标签。
